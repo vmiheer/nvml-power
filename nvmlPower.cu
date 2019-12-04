@@ -1,6 +1,8 @@
 #include "nvmlPower.hpp"
 #include <cstdlib>
-#include <cstring>
+#include <string>
+#include <cassert>
+#include <unistd.h>
 using namespace std;
 
 /*
@@ -17,6 +19,11 @@ nvmlEnableState_t pmmode;
 nvmlComputeMode_t computeMode;
 
 pthread_t powerPollThread;
+FILE *fp;
+
+FILE *getPowerLogfile() {
+  return fp;
+}
 
 /*
 Poll the GPU using nvml APIs.
@@ -25,10 +32,11 @@ void *powerPollingFunc(void *ptr)
 {
 
 	unsigned int powerLevel = 0;
-	FILE *fp = fopen("Power_data.txt", "w+");
+	timespec t;
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, 0);
 	while (pollThreadStatus)
 	{
+
 		// Get the power management mode of the GPU.
 		nvmlResult = nvmlDeviceGetPowerManagementMode(nvmlDeviceID, &pmmode);
 
@@ -43,9 +51,21 @@ void *powerPollingFunc(void *ptr)
 		}
 
 		// The output file stores power in Watts.
-		fprintf(fp, "%.3lf\n", (powerLevel)/1000.0);
+		if (clock_gettime(CLOCK_REALTIME, &t) == 0) {
+		  // cout << t.tv_sec << t.tv_nsec << endl;
+		} else {
+		        t = {};
+		}
+		fprintf(fp, "%lld%.9ld %.3lf\n", t.tv_sec, t.tv_nsec, (powerLevel)/1000.0);
 	}
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, 0);
+	if (clock_gettime(CLOCK_REALTIME, &t) == 0) {
+	  // cout << t.tv_sec << t.tv_nsec << endl;
+	} else {
+	  t = {};
+	}
+	fprintf(fp, "# end: %lld%.9ld\n", t.tv_sec, t.tv_nsec);
+
 	fclose(fp);
 	pthread_exit(0);
 }
@@ -56,7 +76,6 @@ Function needs to be modified as per usage to handle errors as seen fit.
 */
 void nvmlAPIRun()
 {
-	int i;
 
 	// Initialize nvml.
 	nvmlResult = nvmlInit();
@@ -80,9 +99,9 @@ void nvmlAPIRun()
 	        const char *visibleDevices = getenv("CUDA_VISIBLE_DEVICES");
 		assert(visibleDevices && "Couldn't find any device!\n");
 		assert(!(strchr(visibleDevices, ',')) && "We don't support multiple devices!");
-		const auto deviceIndex = stoi(visibleDevices);
+		const auto i = stoi(visibleDevices);
 
-		nvmlResult = nvmlDeviceGetHandleByIndex(deviceIndex, &nvmlDeviceID);
+		nvmlResult = nvmlDeviceGetHandleByIndex(i, &nvmlDeviceID);
 		if (NVML_SUCCESS != nvmlResult)
 		{
 			printf("Failed to get handle for device %d: %s\n", i, nvmlErrorString(nvmlResult));
@@ -126,7 +145,17 @@ void nvmlAPIRun()
 	pollThreadStatus = true;
 
 	const char *message = "Test";
+	fp = fopen("Power_data.txt", "w+");
+	timespec t;
+	if (clock_gettime(CLOCK_REALTIME, &t) == 0) {
+	  // cout << t.tv_sec << t.tv_nsec << endl;
+	} else {
+	  t = {};
+	}
+	fprintf(fp, "# start: %lld%.9ld\n", t.tv_sec, t.tv_nsec);
+
 	int iret = pthread_create(&powerPollThread, NULL, powerPollingFunc, (void*) message);
+
 	if (iret)
 	{
 		fprintf(stderr,"Error - pthread_create() return code: %d\n",iret);

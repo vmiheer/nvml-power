@@ -18,5 +18,6 @@ void nvmlAPIRun();
 void nvmlAPIEnd();
 void *powerPollingFunc(void *ptr);
 int getNVMLError(nvmlReturn_t resultToCheck);
+FILE *getPowerLogfile();
 
 #endif
